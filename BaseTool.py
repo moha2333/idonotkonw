@@ -43,9 +43,13 @@ class Preprocess():
         #del train_x
     def next_train_batch(self,batchSize=100000):
         batchsize=batchSize
-        index= random.randint(0,int(len(self.train_x.tocoo().row)/batchsize)-1)
+        #print(len(self.train_y))
+        index= random.randint(0,int(len(self.train_y)/batchsize)-1)
+        #print(index)
+        print(index*batchsize,(index+1)*batchsize)
         tmpMat=(self.train_x.tocsr()[index*batchsize:(index+1)*batchsize,]).tocoo()
-        tf_coo_matrix=tf.SparseTensorValue(indices=np.array([tmpMat.row,tmpMat.col]).T,values=tmpMat.data,dense_shape=tmpMat.shape)
+        #tf_coo_matrix=tf.SparseTensorValue(indices=np.array([tmpMat.row,tmpMat.col]).T,values=tmpMat.data,dense_shape=tmpMat.shape)
+        tf_coo_matrix=tmpMat.toarray()
         #tmpMaty=self.train_y.tocsr()[index*batchsize:(index+1)*batchsize,]
         #tf_coo_matrixy=tf.SparseTensorValue(indices=np.array([tmpMaty.row,tmpMaty.col]).T,values=tmpMaty.data,dense_shape=tmpMaty.shape)
         tf_coo_matrixy=self.train_y[index*batchsize:(index+1)*batchsize]
