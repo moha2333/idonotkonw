@@ -13,14 +13,16 @@ from sklearn.preprocessing import OneHotEncoder, LabelEncoder
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.externals import joblib
+from sklearn import  metrics
 # import xgboost as xgb
 import lightgbm as lgb
 import pickle as pk
 import math
 import  tensorflow as tf
 from  BaseTool import  *
+import time
 workspace ="./data/"
-
+start=time.clock()
 if not os.path.exists(workspace+'model_fea_add3_train_y.pkl'):
     # 下面根据前面的特征分析，剔除掉缺失率过高的特征: interest3, interest4, kw3, appIdInstall, topic3
     ad_feature=pd.read_csv(workspace+'adFeature.csv')
@@ -219,6 +221,8 @@ else:
     train_y=pk.load(open(workspace+'model_fea_add3_train_y.pkl',"rb"))
     res=pk.load(open(workspace+'model_fea_add3_test.pk',"rb"))
 print("data prepare well")
+end=time.clock()
+print("using  %s s"%(end-start))
 print("train_x,train_y,test_x,res",type(train_x),type(train_y),type(test_x),type(res))
 print(train_x.shape,train_y.shape)
 print(test_x.shape,res.shape)
@@ -228,8 +232,9 @@ _train_y=list(train_y)
 _test_x=test_x
 data=Preprocess(_train_x,_train_y,_test_x)
 InputColumn=7
-InputRow=int(data.veclen/InputColumn)
-InputX=tf.sparse_placeholder(dtype=tf.float32,shape=[None,None],name="InputX")
+InputRow=int(5299/InputColumn)
+#InputX=tf.sparse_placeholder(dtype=tf.float32,shape=[None,None],name="InputX")
+InputX=tf.placeholder(dtype=tf.float32,shape=[None,None],name="InputX")
 InputY=tf.placeholder(dtype=tf.float32,shape=[None,2],name="InputY")
 
 '''
@@ -247,13 +252,14 @@ merged=tf.summary.merge_all()
 '''
 
 with tf.name_scope('C1'):
-    W_C1=tf.Variable(tf.truncated_normal([3,3,1,512],stddev=0.01),dtype=tf.float32)
-    b_C1=tf.Variable(tf.constant(0.1,tf.float32,shape=[512]))
+    W_C1=tf.Variable(tf.truncated_normal([3,3,1,32],stddev=0.01),dtype=tf.float32)
+    b_C1=tf.Variable(tf.constant(0.1,tf.float32,shape=[32]))
     #W_C1是C1层的权值矩阵,它也是卷积核，共有32个卷积核。
     # b_C1则是偏置
     print("reshape.....")
-    InputX=tf.sparse_tensor_to_dense(InputX)
+    #InputX=tf.sparse_tensor_to_dense(InputX)
     X=tf.reshape(InputX,[-1,InputRow,InputColumn,1])
+    print(X.shape)
     #需要对输入转化为conv2d想要的格式
     featureMap_C1=tf.nn.conv2d(X,W_C1,[1,1,1,1],padding='SAME')+b_C1
     #conv2d的参数：
@@ -268,8 +274,8 @@ with tf.name_scope('S2'):
     featureMap_S2=tf.nn.max_pool(relu_C1,ksize=[1,2,2,1],strides=[1,2,2,1],padding='SAME')
     #S2的池化。
 with tf.name_scope('C3'):
-    W_C3=tf.Variable(tf.truncated_normal([3,3,512,256],stddev=0.01))
-    b_C3=tf.Variable(tf.constant(0.1,tf.float32,shape=[256]))
+    W_C3=tf.Variable(tf.truncated_normal([3,3,32,64],stddev=0.01))
+    b_C3=tf.Variable(tf.constant(0.1,tf.float32,shape=[64]))
     featureMap_C3=tf.nn.conv2d(featureMap_S2,W_C3,[1,1,1,1],padding='SAME')+b_C3
 
 with tf.name_scope('f'):
@@ -297,16 +303,16 @@ outputY=tf.add(predictY,0,name="outputY")
 #loss=tf.reduce_mean(-tf.reduce_sum(InputY*tf.log(predictY)))
 loss=tf.nn.softmax_cross_entropy_with_logits(labels=InputY,logits=predictY)
 #tf.summary.histogram('loss',loss)
-tf.summary.scalar('loss',loss)
+#tf.summary.scalar('loss',loss)
 #残差函数loss设置为交叉熵
 learning_rate=1e-4
 #train_op=tf.train.AdamOptimizer(learning_rate).minimize(loss)
 train_op=tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
-y_pred=tf.arg_max(predictY,1)
-bool_pred=tf.equal(tf.arg_max(InputY,1),y_pred)
-right_rate=tf.reduce_mean(tf.to_float(bool_pred))
-tf.summary.scalar("right rate",right_rate)
+#y_pred=tf.arg_max(predictY,1)
+#bool_pred=tf.equal(tf.arg_max(InputY,1),y_pred)
+#right_rate=tf.reduce_mean(tf.to_float(bool_pred))
+#tf.summary.scalar("right rate",right_rate)
 Saver=tf.train.Saver()
 
 
@@ -329,8 +335,8 @@ def to_csv(output,res,filename=workspace+"submission.csv"):
         res.to_csv(filename,index=False)
 def cal_auc(real_y,predict_y):
     return metrics.roc_auc_score(real_y,predict_y)
-merge_op=None
-merge_op2=None
+#merge_op=None
+#merge_op2=None
 print("start....")
 with tf.Session() as sess:
     print("begin....training......")
@@ -341,27 +347,30 @@ with tf.Session() as sess:
     sameMAX=40
     sameStep=0
     accSum=0
-    batchsize=10000
+    batchsize=300
     batch_epoch=data.train_num()/batchsize
     load_model(sess)
     while True:
-        print(step)
-        if(step%batch_epoch==0):
+        #print(step)
+        if(step%200==0):
             #测试一下
-            test_vec,test_lab=data.next_valid_batch(batchSize=10000)
-            tf.summary.scalar('valid:rate',right_rate)
+            test_vec,test_lab=data.next_valid_batch(batchSize=500)
+            #tf.summary.scalar('valid:rate',right_rate)
 
-            if merge_op2==None:
-                merge_op2=tf.summary.merge_all()
-            acc,summary_,out=sess.run([right_rate,merge_op2,outputY],{InputX:test_vec,InputY:test_lab})
-            writer.add_summary(summary_,step)
-            auc=cal_auc(test_lab,np.array(out)[:,1])
-            print({"!!!!!!!!!!!!!!testing:"+str(step):acc,"auc":auc})
-            accSum=accSum+acc
+            #if merge_op2==None:
+            #    merge_op2=tf.summary.merge_all()
+            out=sess.run([outputY],{InputX:test_vec,InputY:test_lab})[0]
+            #writer.add_summary(summary_,step)
+            #print(out,np.array(out)[:,1])
+            print("#"*30)
+            #print(np.array(test_lab)[:,1])
+            auc=cal_auc(np.array(test_lab)[:,1],np.array(out)[:,1])
+            print({"!!!!!!!!!!!!!!testing:"+str(step)+" auc":auc})
+            accSum=accSum+auc
             sameStep+=1
             if(sameStep%sameMAX==0):
-                if(acc==accSum/sameMAX):
-                    print({step:acc})
+                if(auc==accSum/sameMAX):
+                    print({step:auc})
                     break
                 else:
                     accSum=0
@@ -370,18 +379,24 @@ with tf.Session() as sess:
             step=step+1
             continue
         train_vec,train_lab=data.next_train_batch(batchSize=batchsize)
-        print(type(train_vec),type(train_lab))
-        if merge_op==None:
-            merge_op=tf.summary.merge_all()
-        l,op,summary=sess.run([loss,train_op,merge_op],feed_dict={InputX:train_vec,InputY:train_lab})
+        #print(type(train_vec),type(train_lab))
+        #if merge_op==None:
+        #    merge_op=tf.summary.merge_all()
+        #np.array(train_vec)
+        #print("lallalal",train_vec.shape)
+        #np.array(train_lab)
+        #print(train_lab)
+        #np.array(train_lab)
+        #print("2233")
+        l,op=sess.run([loss,train_op],feed_dict={InputX:train_vec,InputY:train_lab})
         #py,l,op=sess.run([predictY,loss,train_op])
-        print(step,l)
+        print(step)
         if(step%20==0):
             #每隔20批,跟踪一次
-            writer.add_summary(summary,step)
+            #writer.add_summary(summary,step)
             pass
         step=step+1
     save_model(sess)
     #print(data.test_vectors())
-    output=sess.run([outputY],feed_dict={InputX:data.test_vectors(),InputY:data.test_labels()})
+    output=sess.run([outputY],feed_dict={InputX:data.test_vectors(),InputY:data.test_labels()})[0]
     to_csv(output,res)
