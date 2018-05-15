@@ -53,9 +53,10 @@ class Preprocess():
 
     def next_valid_batch(self,batchSize=100000):
         batchsize=batchSize
-        index= random.randint(0,int(len(self.valid_x.tocoo().row)/batchsize)-1)
+        index= random.randint(0,int(len(self.valid_y)/batchsize)-1)
         tmpMat=(self.valid_x.tocsr()[index*batchsize:(index+1)*batchsize,]).tocoo()
-        tf_coo_matrix=tf.SparseTensorValue(indices=np.array([tmpMat.row,tmpMat.col]).T,values=tmpMat.data,dense_shape=tmpMat.shape)
+        #tf_coo_matrix=tf.SparseTensorValue(indices=np.array([tmpMat.row,tmpMat.col]).T,values=tmpMat.data,dense_shape=tmpMat.shape)
+        tf_coo_matrix=tmpMat.toarray()
         #tmpMaty=self.valid_y.tocsr()[index*batchsize:(index+1)*batchsize,]
         #tf_coo_matrixy=tf.SparseTensorValue(indices=np.array([tmpMaty.row,tmpMaty.col]).T,values=tmpMaty.data,dense_shape=tmpMaty.shape)
         tf_coo_matrixy=self.valid_y[index*batchsize:(index+1)*batchsize]
