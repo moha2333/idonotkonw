@@ -12,6 +12,14 @@ from sklearn.preprocessing import OneHotEncoder,LabelEncoder
 from scipy import sparse
 import os
 
+# ×××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+# 记录                                                        
+# 1.  剔除interest3/4, kw3, topic3 同时增加提取的各特征，过拟合，准确率为72.37%，下降2.2%
+#       n_estimators = 10000, early——stoping= 10000
+# 2.  不剔除上述缺省过多的特征，增加提取的特征，准确率待记录。
+# ×××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××××
+
+
 data_path = "data/"
 
 ad_feature=pd.read_csv(data_path + 'adFeature.csv')
@@ -33,7 +41,7 @@ else:
         user_feature.to_csv(data_path + 'userFeature.csv', index=False)
 
 train=pd.read_csv(data_path + 'train.csv')
-predict=pd.read_csv(data_path + 'test1.csv')
+predict=pd.read_csv(data_path + 'test2.csv')
 print("train shape:", train.shape, "test shape:", predict.shape)
 print("load data prepared!") 
 
@@ -144,15 +152,18 @@ def nlp_feature_score(feature, train, predict):
     predict[feature + "_score"][predict[feature]=="-1"]=-1.0
     return train, predict
 
-#TODO：对于缺省过多的interest3|4，kw3,topic3等特征是否剔除或者也进行贝叶斯平滑操作
 train,predict = nlp_feature_score("appIdAction", train, predict)
 train,predict = nlp_feature_score("interest1", train, predict)
 train,predict = nlp_feature_score("interest2", train, predict)
+train,predict = nlp_feature_score("interest3", train, predict)
+train,predict = nlp_feature_score("interest4", train, predict)
 train,predict = nlp_feature_score("interest5", train, predict)
 train,predict = nlp_feature_score("kw1", train, predict)
 train,predict = nlp_feature_score("kw2", train, predict)
+train,predict = nlp_feature_score("kw3", train, predict)
 train,predict = nlp_feature_score("topic1", train, predict)
 train,predict = nlp_feature_score("topic2", train, predict)
+train,predict = nlp_feature_score("topic3", train, predict)
 
 print(train.shape, predict.shape)
 
@@ -171,15 +182,13 @@ data = data.merge(add, on=["campaignId"], how="left")
 
 one_hot_feature=['LBS','age','carrier','consumptionAbility','education','gender','house','os','ct','marriageStatus',
                  'advertiserId','campaignId','creativeId','adCategoryId', 'productId', 'productType']
-vector_feature=['appIdAction','appIdInstall','interest1','interest2',
-                'interest3','interest4','interest5','kw1','kw2','kw3','topic1','topic2','topic3']
+vector_feature=['appIdAction','appIdInstall','interest1','interest2', 'interest3', 'interest4',
+                'interest5','kw1','kw2','kw3', 'topic1','topic2', 'topic3']
 for feature in one_hot_feature:
     try:
         data[feature] = LabelEncoder().fit_transform(data[feature].apply(int))
     except:
         data[feature] = LabelEncoder().fit_transform(data[feature])
-
-#TODO: 加入baseline2中的一些特征进行测试
 
 
 train=data[data.label!=-1]
@@ -190,7 +199,9 @@ res=test[['aid','uid']]
 test=test.drop('label',axis=1)
 
 enc = OneHotEncoder()
-raw_feature = ['creativeSize',"aid_age_count",'aid_gender_count','campaignId_active_aid','appIdAction_score']
+raw_feature = ['creativeSize',"aid_age_count",'aid_gender_count','campaignId_active_aid',
+                'appIdAction_score','interest1_score','interest2_score', 'interest3_score', 'interest4_score', 'interest5_score', 'kw1_score', 
+                'kw2_score','kw3_score', 'topic1_score', 'topic2_score', 'topic3_score']
 train_x=train[raw_feature]
 test_x=test[raw_feature]
 
@@ -217,11 +228,11 @@ def LGB_predict(train_x,train_y,test_x,res):
     print("LGB test")
     clf = lgb.LGBMClassifier(
         boosting_type='gbdt', num_leaves=31, reg_alpha=0.0, reg_lambda=1,
-        max_depth=-1, n_estimators=10000, objective='binary',
+        max_depth=-1, n_estimators=5000, objective='binary',
         subsample=0.7, colsample_bytree=0.7, subsample_freq=1,
         learning_rate=0.05, min_child_weight=50, random_state=2018, n_jobs=-1
     )
-    clf.fit(train_x, train_y, eval_set=[(train_x, train_y)], eval_metric='auc', verbose=100, early_stopping_rounds=2000)
+    clf.fit(train_x, train_y, eval_set=[(train_x, train_y)], eval_metric='auc', verbose=100, early_stopping_rounds=1000)
     res['score'] = clf.predict_proba(test_x)[:,1]
     res['score'] = res['score'].apply(lambda x: float('%.6f' % x))
     res.to_csv('data/submission.csv', index=False)
